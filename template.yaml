@@ -9,7 +9,6 @@ metadata:
     openshift.io/display-name: redis-mss
     tags: messaging,redis-mss
   name: redis-mss
-  namespace: openshift
 objects:
 - apiVersion: v1
   kind: Service
@@ -21,9 +20,9 @@ objects:
   spec:
     clusterIP: None
     ports:
-    - port: 6379
+    - port: ${REDIS_PORT}
       protocol: TCP
-      targetPort: 6379
+      targetPort: ${REDIS_PORT}
     selector:
       app: ${NAME}
     type: ClusterIP
@@ -84,9 +83,9 @@ objects:
             value: ${REDIS_PORT}
           - name: REDIS_PASS
             value: ${REDIS_PASSWORD}
-          image: registry.cmpaasdev.com/library/redis-mss:${VERSION}
+          image: redis-mss:${VERSION}
           imagePullPolicy: Always
-          name: mss-slave
+          name: redis
           ports:
           - containerPort: 6379
             protocol: TCP
@@ -98,10 +97,8 @@ objects:
               cpu: ${RESOURCE_CPU_REQ}
               memory: ${RESOURCE_MEMORY_REQ}
           volumeMounts:
-          - mountPath: /data
+          - mountPath: /redis/data
             name: ${NAME}-volume
-        nodeSelector:
-          node-role.kubernetes.io/zone: ${ZONE}
     volumeClaimTemplates:
     - metadata:
         name: ${NAME}-volume
@@ -145,7 +142,7 @@ objects:
             value: ${REDIS_PASSWORD}
           - name: REDIS_PORT
             value: ${REDIS_PORT}
-          image: registry.cmpaasdev.com/library/redis-mss:${VERSION}
+          image: redis-mss:${VERSION}
           imagePullPolicy: Always
           name: mss-sentinel
           ports:
