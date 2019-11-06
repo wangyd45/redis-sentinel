@@ -175,7 +175,7 @@ parameters:
 - description: 存储类型，默认使用glusterfs
   name: Storageclass
   required: true
-  value: default-glusterfs-storage
+  value: sc-gluster
 - description: Redis数据持久化目录容量
   name: VOLUME_REDIS_CAPACITY
   value: 2Gi
