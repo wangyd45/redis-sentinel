@@ -1,0 +1,202 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+labels:
+  component: redis-mss
+  template: redis-mss
+metadata:
+  annotations:
+    description: Create a master+slave+sentinel redis cluster
+    openshift.io/display-name: redis-mss
+    tags: messaging,redis-mss
+  name: redis-mss
+  namespace: openshift
+objects:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: ${NAME}
+      template: redis-mss
+    name: ${NAME}
+  spec:
+    clusterIP: None
+    ports:
+    - port: 6379
+      protocol: TCP
+      targetPort: 6379
+    selector:
+      app: ${NAME}
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      name: ${NAME}-sentinel
+      template: redis-mss
+    name: ${NAME}-sentinel
+  spec:
+    ports:
+    - port: 26379
+      protocol: TCP
+      targetPort: 26379
+    selector:
+      ${NAME}-sentinel: "true"
+    type: ClusterIP
+- apiVersion: apps/v1beta1
+  kind: StatefulSet
+  metadata:
+    labels:
+      name: ${NAME}
+      template: redis-mss
+    name: ${NAME}
+  spec:
+    podManagementPolicy: Parallel
+    replicas: ${REPLICAS}
+    serviceName: ${NAME}
+    template:
+      metadata:
+        annotations:
+          scheduler.alpha.kubernetes.io/affinity: |
+            {
+              "podAntiAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": [{
+                  "labelSelector": {
+                    "matchExpressions": [{
+                      "key": "app",
+                      "operator": "In",
+                      "values": ["${NAME}"]
+                    }]
+                  },
+                  "topologyKey": "kubernetes.io/hostname"
+                }]
+              }
+            }
+        labels:
+          component: redis-mss
+          template: redis-mss
+          app: ${NAME}
+      spec:
+        containers:
+        - env:
+          - name: NAME
+            value: ${NAME}
+          - name: REDIS_PORT
+            value: ${REDIS_PORT}
+          - name: REDIS_PASS
+            value: ${REDIS_PASSWORD}
+          image: registry.cmpaasdev.com/library/redis-mss:${VERSION}
+          imagePullPolicy: Always
+          name: mss-slave
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            limits:
+              cpu: ${RESOURCE_CPU_LIMIT}
+              memory: ${RESOURCE_MEMORY_LIMIT}
+            requests:
+              cpu: ${RESOURCE_CPU_REQ}
+              memory: ${RESOURCE_MEMORY_REQ}
+          volumeMounts:
+          - mountPath: /data
+            name: ${NAME}-volume
+        nodeSelector:
+          node-role.kubernetes.io/zone: ${ZONE}
+    volumeClaimTemplates:
+    - metadata:
+        name: ${NAME}-volume
+        annotations:
+          volume.beta.kubernetes.io/storage-class: ${Storageclass}
+          volume.beta.kubernetes.io/storage-provisioner: kubernetes.io/glusterfs
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: ${VOLUME_REDIS_CAPACITY}
+- apiVersion: apps/v1beta1
+  kind: StatefulSet
+  metadata:
+    labels:
+      ${NAME}-sentinel: "true"
+      template: redis-mss
+    name: ${NAME}-sentinel
+  spec:
+    podManagementPolicy: Parallel
+    replicas: 3
+    selector:
+      matchLabels:
+        ${NAME}-sentinel: "true"
+    serviceName: ${NAME}-sentinel
+    template:
+      metadata:
+        labels:
+          component: redis-mss
+          template: redis-mss
+          ${NAME}-sentinel: "true"
+      spec:
+        containers:
+        - env:
+          - name: NAME
+            value: ${NAME}
+          - name: SENTINEL
+            value: "true"
+          - name: REDIS_PASS
+            value: ${REDIS_PASSWORD}
+          - name: REDIS_PORT
+            value: ${REDIS_PORT}
+          image: registry.cmpaasdev.com/library/redis-mss:${VERSION}
+          imagePullPolicy: Always
+          name: mss-sentinel
+          ports:
+          - containerPort: 26379
+            name: ${NAME}-sentinel
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+parameters:
+- description: 组件拉起时使用的名称(小于6个字符)
+  name: NAME
+  required: true
+  value: redis
+- description: 服务版本
+  name: VERSION
+  required: true
+  value: "5.0.4"
+- description: Redis实例数(默认1master其余为slave)
+  name: REPLICAS
+  required: true
+  value: "3"
+- description: 服务部署的区域
+  name: ZONE
+  required: true
+- description: 存储类型，默认使用glusterfs
+  name: Storageclass
+  required: true
+  value: default-glusterfs-storage
+- description: Redis数据持久化目录容量
+  name: VOLUME_REDIS_CAPACITY
+  value: 2Gi
+- description: 单个实例初始内存配额
+  name: RESOURCE_MEMORY_REQ
+  value: 2Gi
+- description: 单个实例最大内存配额
+  name: RESOURCE_MEMORY_LIMIT
+  value: 2Gi
+- description: 单个实例初始CPU配额
+  name: RESOURCE_CPU_REQ
+  value: "1"
+- description: 单个实例最大CPU配额
+  name: RESOURCE_CPU_LIMIT
+  value: "1"
+- description: REDIS密码
+  name: REDIS_PASSWORD
+  value: "1qaz@WSX"
+- description: REDIS端口
+  name: REDIS_PORT
+  value: "6379"
